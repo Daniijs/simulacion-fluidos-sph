@@ -1,0 +1,18 @@
+# Salida generada por la simulación y el render
+POV_Frames/
+RF_Frames/
+Videos/
+*.pov.bak
+/simulacion_fluidos.mp4
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Sistema / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
