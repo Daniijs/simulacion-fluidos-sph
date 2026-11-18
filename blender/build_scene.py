@@ -221,7 +221,7 @@ def concrete_material():
     noise = nt.nodes.new("ShaderNodeTexNoise")
     noise.inputs["Scale"].default_value = 90.0
     noise.inputs["Detail"].default_value = 10.0
-    color = ramp(nt, [(0.35, (0.48, 0.47, 0.44)), (0.65, (0.66, 0.65, 0.61))])
+    color = ramp(nt, [(0.35, (0.36, 0.355, 0.33)), (0.65, (0.5, 0.49, 0.46))])
     L.new(noise.outputs["Fac"], color.inputs["Fac"])
     bsdf = principled(nt, Roughness=0.8)
     L.new(color.outputs["Color"], bsdf.inputs["Base Color"])
@@ -297,7 +297,7 @@ def water_material():
     # Pure absorption (Beer-Lambert): at this scale scattering is invisible and costly.
     volume = nt.nodes.new("ShaderNodeVolumeAbsorption")
     volume.inputs["Color"].default_value = (0.55, 0.74, 0.66, 1)
-    volume.inputs["Density"].default_value = 6.0
+    volume.inputs["Density"].default_value = 3.5
     L.new(volume.outputs[0], out.inputs["Volume"])
     return mat
 
@@ -330,8 +330,7 @@ def table_material():
     L.new(mapping.outputs["Vector"], grain.inputs["Vector"])
     color = ramp(nt, [(0.35, (0.055, 0.03, 0.018)), (0.65, (0.13, 0.075, 0.04))])
     L.new(grain.outputs["Fac"], color.inputs["Fac"])
-    bsdf = principled(nt, Roughness=0.4)
-    bsdf.inputs["Coat Weight"].default_value = 0.3
+    bsdf = principled(nt, Roughness=0.7)
     L.new(color.outputs["Color"], bsdf.inputs["Base Color"])
     L.new(bsdf.outputs[0], out.inputs["Surface"])
     return mat
