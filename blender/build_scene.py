@@ -295,9 +295,9 @@ def water_material():
     L.new(shadow_mix.outputs[0], out.inputs["Surface"])
 
     volume = nt.nodes.new("ShaderNodeVolumePrincipled")
-    volume.inputs["Color"].default_value = (0.55, 0.62, 0.45, 1)  # silt-laden water
-    volume.inputs["Density"].default_value = 1.2
-    volume.inputs["Absorption Color"].default_value = (0.55, 0.75, 0.68, 1)
+    volume.inputs["Color"].default_value = (0.62, 0.66, 0.52, 1)  # silt-laden water
+    volume.inputs["Density"].default_value = 1.0
+    volume.inputs["Absorption Color"].default_value = (0.62, 0.82, 0.76, 1)
     L.new(volume.outputs[0], out.inputs["Volume"])
     return mat
 
@@ -462,9 +462,17 @@ def setup_world(sun_elevation: float = 40.0, sun_rotation: float = 120.0):
     sky.sun_disc = False
     bg = nt.nodes.new("ShaderNodeBackground")
     bg.inputs["Strength"].default_value = 0.35
-    out = nt.nodes.new("ShaderNodeOutputWorld")
     nt.links.new(sky.outputs[0], bg.inputs[0])
-    nt.links.new(bg.outputs[0], out.inputs["Surface"])
+    # Camera rays see a dark studio backdrop; lighting still comes from the sky.
+    backdrop = nt.nodes.new("ShaderNodeBackground")
+    backdrop.inputs["Color"].default_value = (0.018, 0.02, 0.024, 1)
+    path = nt.nodes.new("ShaderNodeLightPath")
+    mix = nt.nodes.new("ShaderNodeMixShader")
+    nt.links.new(path.outputs["Is Camera Ray"], mix.inputs["Fac"])
+    nt.links.new(bg.outputs[0], mix.inputs[1])
+    nt.links.new(backdrop.outputs[0], mix.inputs[2])
+    out = nt.nodes.new("ShaderNodeOutputWorld")
+    nt.links.new(mix.outputs[0], out.inputs["Surface"])
 
     sun_data = bpy.data.lights.new("Sun", "SUN")
     sun_data.energy = 4.5
@@ -475,23 +483,87 @@ def setup_world(sun_elevation: float = 40.0, sun_rotation: float = 120.0):
     sun.rotation_euler = (math.radians(90 - sun_elevation), 0, math.radians(sun_rotation - 180))
 
 
-def setup_camera(location, target, focal_mm: float = 50.0, f_stop: float = 4.0):
+def setup_camera(focal_mm: float = 38.0, f_stop: float = 2.0):
+    """Camera aimed at ``CamTarget``, focused on ``Focus`` (both animated later)."""
     cam_data = bpy.data.cameras.new("Camera")
     cam_data.lens = focal_mm
     cam_data.clip_start = 0.01
     cam_data.dof.use_dof = True
     cam_data.dof.aperture_fstop = f_stop
+    cam_data.dof.aperture_blades = 7
     cam = bpy.data.objects.new("Camera", cam_data)
     bpy.context.scene.collection.objects.link(cam)
-    cam.location = location
+    target = bpy.data.objects.new("CamTarget", None)
     focus = bpy.data.objects.new("Focus", None)
-    bpy.context.scene.collection.objects.link(focus)
-    focus.location = target
+    for empty in (target, focus):
+        bpy.context.scene.collection.objects.link(empty)
     cam_data.dof.focus_object = focus
     track = cam.constraints.new("TRACK_TO")
-    track.target = focus
+    track.target = target
     bpy.context.scene.camera = cam
-    return cam, focus
+    return cam, target, focus
+
+
+# Camera path in Blender coordinates (x downstream, z up): wide establishing shot,
+# push in on the dam as it fails, then crane down and follow the flood into the village.
+CAMERA_KEYS = [
+    # (phase, location, aim point, focal length)
+    (0.0, (4.55, 0.50, 2.25), (1.25, 0.00, 0.25), 36.0),
+    (1.0, (3.95, 0.35, 1.70), (1.15, 0.00, 0.20), 38.0),
+    (2.0, (3.55, -0.10, 1.15), (1.75, 0.00, 0.08), 42.0),
+    (3.0, (3.45, -0.30, 1.00), (2.20, 0.05, 0.03), 44.0),
+]
+
+
+def animate_camera(cam, target, focus, fronts: list[dict], dam_x: float = 1.0, focus_limit_x: float = 2.4) -> None:
+    """Keyframe the camera path and make the focus follow the flood front."""
+    n = len(fronts)
+    xs = np.array([f["x"] for f in fronts])
+    moving = np.nonzero(xs > dam_x + 0.03)[0]
+    release = int(moving[0]) if len(moving) else n // 4
+    phase_frames = [1, release + 1, release + 1 + int(0.4 * (n - release)), n]
+    for (_, loc, aim, lens), frame in zip(CAMERA_KEYS, phase_frames, strict=True):
+        cam.location = loc
+        cam.keyframe_insert("location", frame=frame)
+        cam.data.lens = lens
+        cam.data.keyframe_insert("lens", frame=frame)
+        target.location = aim
+        target.keyframe_insert("location", frame=frame)
+
+    # focus: smoothed flood front, held on the dam until the water moves
+    pts = np.array([[f["x"], -f["z"], f["y"]] for f in fronts])
+    pts[: release + 1] = [dam_x, 0.0, 0.25]
+    pts[:, 0] = np.minimum(pts[:, 0], focus_limit_x)  # keep focus in the village once the wave has passed
+    kernel = np.ones(9) / 9
+    smooth = np.stack([np.convolve(np.pad(pts[:, k], 4, mode="edge"), kernel, "valid") for k in range(3)], 1)
+    for i, p in enumerate(smooth):
+        focus.location = p
+        focus.keyframe_insert("location", frame=i + 1)
+
+
+def spray_object(collection):
+    """Droplets: one vertex per spray particle, drawn as small white spheres."""
+    mat, nt, out = node_material("Spray")
+    bsdf = principled(nt, Roughness=0.35)
+    bsdf.inputs["Base Color"].default_value = (0.92, 0.95, 0.97, 1)
+    bsdf.inputs["Subsurface Weight"].default_value = 0.5
+    nt.links.new(bsdf.outputs[0], out.inputs["Surface"])
+
+    obj = bpy.data.objects.new("Spray", bpy.data.meshes.new("Spray"))
+    collection.objects.link(obj)
+    tree = bpy.data.node_groups.new("SprayPoints", "GeometryNodeTree")
+    tree.interface.new_socket("Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
+    tree.interface.new_socket("Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
+    gin, gout = tree.nodes.new("NodeGroupInput"), tree.nodes.new("NodeGroupOutput")
+    to_points = tree.nodes.new("GeometryNodeMeshToPoints")
+    to_points.inputs["Radius"].default_value = 0.0011
+    set_mat = tree.nodes.new("GeometryNodeSetMaterial")
+    set_mat.inputs["Material"].default_value = mat
+    tree.links.new(gin.outputs[0], to_points.inputs["Mesh"])
+    tree.links.new(to_points.outputs[0], set_mat.inputs["Geometry"])
+    tree.links.new(set_mat.outputs[0], gout.inputs[0])
+    obj.modifiers.new("Points", "NODES").node_group = tree
+    return obj
 
 
 # ---------------------------------------------------------------------------------------- build
@@ -553,15 +625,23 @@ def build(sim_dir: Path, preview: bool = False) -> None:
     water.data.materials.append(water_material())
     water["sim_dir"] = str(sim_dir)
 
+    spray = spray_object(water_col)
+    spray["sim_dir"] = str(sim_dir)
+
     setup_world()
-    setup_camera(location=(4.25, 0.25, 1.75), target=(1.6, 0.0, 0.08), focal_mm=38, f_stop=2.8)
+    cam, target, focus = setup_camera()
+    front_file = sim_dir / "front.json"
+    if front_file.exists():
+        animate_camera(cam, target, focus, json.loads(front_file.read_text()))
 
     frames = len(meta["frames"])
     scene.frame_start, scene.frame_end = 1, frames
     scene.render.fps = 30
     scene.render.engine = "CYCLES"
-    scene.cycles.samples = 64 if preview else 384
+    scene.cycles.samples = 64 if preview else 256
+    scene.cycles.adaptive_threshold = 0.015
     scene.cycles.use_denoising = True
+    scene.cycles.denoiser = "OPENIMAGEDENOISE"
     scene.cycles.max_bounces = 12
     scene.cycles.transmission_bounces = 12
     scene.cycles.volume_bounces = 2
@@ -571,6 +651,8 @@ def build(sim_dir: Path, preview: bool = False) -> None:
     scene.render.motion_blur_shutter = 0.5
     scene.render.resolution_x, scene.render.resolution_y = (960, 540) if preview else (3840, 2160)
     scene.render.image_settings.file_format = "PNG"
+    scene.render.image_settings.color_depth = "16"
+    scene.render.filepath = "//render/frame_"
     scene.view_settings.view_transform = "AgX"
     scene.view_settings.look = "AgX - Medium High Contrast"
 

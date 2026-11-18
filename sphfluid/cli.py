@@ -22,6 +22,12 @@ def _cmd_surface(args: argparse.Namespace) -> None:
     reconstruct_directory(args.directory, resolution=args.resolution, start=args.start, end=args.end)
 
 
+def _cmd_front(args: argparse.Namespace) -> None:
+    from .analysis import flood_front
+
+    flood_front(args.directory)
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="sphfluid", description="GPU fluid simulation with Position Based Fluids.")
     parser.add_argument("-v", "--verbose", action="store_true")
@@ -39,6 +45,10 @@ def main(argv: list[str] | None = None) -> None:
     surface.add_argument("--start", type=int, default=0)
     surface.add_argument("--end", type=int)
     surface.set_defaults(func=_cmd_surface)
+
+    front = sub.add_parser("front", help="track the flood front (used to animate the camera focus)")
+    front.add_argument("directory", type=Path)
+    front.set_defaults(func=_cmd_front)
 
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO if args.verbose else logging.WARNING, format="%(message)s")

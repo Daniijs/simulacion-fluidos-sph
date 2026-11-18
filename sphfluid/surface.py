@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
@@ -61,7 +62,11 @@ def reconstruct(
 
 
 def reconstruct_directory(
-    directory: str | Path, resolution: float = 0.5, start: int = 0, end: int | None = None
+    directory: str | Path,
+    resolution: float = 0.5,
+    start: int = 0,
+    end: int | None = None,
+    on_frame: Callable[[int], None] | None = None,
 ) -> None:
     directory = Path(directory)
     meta = load_metadata(directory)
@@ -69,8 +74,10 @@ def reconstruct_directory(
     out = directory / "surface"
     out.mkdir(exist_ok=True)
     frames = sorted((directory / "particles").glob("frame_*.npz"))[start:end]
-    for path in frames:
+    for i, path in enumerate(frames):
         target = out / path.name
+        if on_frame:
+            on_frame(start + i)
         if target.exists():
             continue
         began = time.perf_counter()
