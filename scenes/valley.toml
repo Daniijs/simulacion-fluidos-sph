@@ -6,14 +6,15 @@ builder = "valley"
 particle_spacing = 0.005
 
 [solver]
-iterations = 4
+iterations = 6
 xsph = 0.02
+settle_time = 0.4     # deep reservoir: damp the start until it is in hydrostatic equilibrium
 
 [output]
 fps = 100          # simulated frames per second: rendered at 30 fps -> 3.3x slow motion
-duration = 3.0
+duration = 3.2
 directory = "output/valley"
 
 [scene]
 seed = 3
-breach_time = 0.35  # lets the reservoir settle before the dam fails
+breach_time = 0.5   # the dam fails once the reservoir has settled

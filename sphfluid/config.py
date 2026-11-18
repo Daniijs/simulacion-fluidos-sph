@@ -39,6 +39,8 @@ class SolverParams:
     vorticity: float = 0.0  # vorticity confinement strength
     max_correction: float = 0.5  # largest position correction per iteration, in particle spacings
     max_speed: float = 20.0  # m/s; a safety net, far above any physical speed in the scenes
+    settle_time: float = 0.0  # s of damped motion at the start, so deep water reaches equilibrium
+    settle_damping: float = 0.1  # fraction of velocity removed per sub-step while settling
     boundary_layers: int = 2
 
 

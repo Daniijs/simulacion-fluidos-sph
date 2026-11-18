@@ -134,6 +134,10 @@ class PBFSolver:
             self._compute_delta(self.num_active)
             self._apply_delta(self.num_active)
         self._update_velocity(dt, self.num_active)
+        if self.time < self.params.settle_time:
+            # Deep water starts from a uniform lattice, i.e. without its hydrostatic
+            # compression; damping lets it settle without rebounding.
+            self._damp(1.0 - self.params.settle_damping, self.num_active)
         self._xsph(self.num_active)
         if self.params.vorticity > 0.0:
             self._vorticity(dt, self.num_active)
@@ -411,6 +415,11 @@ class PBFSolver:
             if speed > self.params.max_speed:
                 v *= self.params.max_speed / speed
             self.v[i] = v
+
+    @ti.kernel
+    def _damp(self, factor: ti.f32, n: ti.i32):
+        for i in range(n):
+            self.v[i] *= factor
 
     @ti.kernel
     def _xsph(self, n: ti.i32):
