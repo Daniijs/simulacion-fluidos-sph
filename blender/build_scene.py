@@ -550,6 +550,53 @@ def animate_camera(cam, target, focus, fronts: list[dict], dam_x: float = 1.0, f
         focus.keyframe_insert("location", frame=i + 1)
 
 
+def animate_breach(
+    chunks, terrain, breach_frame: int, fps_sim: float, last_frame: int, water_level: float = 0.40, seed: int = 1
+):
+    """Blow the breach blocks out of the dam when the gate opens in the simulation.
+
+    Each block leaves with the outflow speed of the water behind it, a fraction of
+    sqrt(2 g h) (Torricelli), plus some scatter and spin, then falls under gravity
+    until it hits the terrain and slides to a stop.
+    """
+    from mathutils import Vector
+
+    rng = np.random.default_rng(seed)
+    g, dt = 9.81, 1.0 / fps_sim
+    for obj in chunks:
+        bpy.context.view_layer.objects.active = obj
+        bpy.ops.object.select_all(action="DESELECT")
+        obj.select_set(True)
+        bpy.ops.object.origin_set(type="ORIGIN_GEOMETRY", center="BOUNDS")
+        half = 0.5 * obj.dimensions.z
+        p = obj.location.copy()
+        head = max(water_level - p.z, 0.02)
+        v = Vector((0.6 * math.sqrt(2 * g * head) + rng.uniform(0.0, 0.4), rng.normal(0, 0.2), rng.uniform(0.1, 0.5)))
+        spin = Vector(rng.normal(0, 5.0, 3))
+        rot = obj.rotation_euler.copy()
+        obj.keyframe_insert("location", frame=breach_frame - 1)
+        obj.keyframe_insert("rotation_euler", frame=breach_frame - 1)
+        resting = False
+        for frame in range(breach_frame, last_frame + 1):
+            if not resting:
+                v.z -= g * dt
+                p += v * dt
+                rot.x += spin.x * dt
+                rot.y += spin.y * dt
+                rot.z += spin.z * dt
+                hit, location, *_ = terrain.ray_cast(p + Vector((0, 0, 1.0)), Vector((0, 0, -1.0)))
+                ground = location.z if hit else -1.0
+                if p.z - 0.6 * half <= ground:
+                    p.z = ground + 0.6 * half
+                    v = Vector((v.x * 0.55, v.y * 0.55, 0.0))
+                    spin *= 0.5
+                    resting = v.length < 0.15
+            obj.location = p
+            obj.rotation_euler = rot
+            obj.keyframe_insert("location", frame=frame)
+            obj.keyframe_insert("rotation_euler", frame=frame)
+
+
 def spray_object(collection):
     """Droplets: one vertex per spray particle, drawn as small white spheres."""
     mat, nt, out = node_material("Spray")
@@ -578,7 +625,7 @@ def spray_object(collection):
 # ---------------------------------------------------------------------------------------- build
 
 
-def build(sim_dir: Path, preview: bool = False) -> None:
+def build(sim_dir: Path, preview: bool = False, breach_time_default: float = 0.5) -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     scene = bpy.context.scene
     meta = json.loads((sim_dir / "simulation.json").read_text())
@@ -617,6 +664,12 @@ def build(sim_dir: Path, preview: bool = False) -> None:
             for poly in obj.data.polygons:
                 poly.use_smooth = True
             terrain = obj
+
+    gate = next((g for g in meta.get("gates", []) if g["name"] == "breach"), None)
+    breach_time = gate["open_time"] if gate else breach_time_default
+    breach_frame = 1 + round(breach_time * meta["fps"])
+    chunks = [o for o in world_col.objects if o.name.startswith("dam_chunk")]
+    animate_breach(chunks, terrain, breach_frame, meta["fps"], len(meta["frames"]))
 
     protos = tree_prototypes(trees_col)
     trees_col.hide_render = True

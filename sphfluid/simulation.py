@@ -53,6 +53,7 @@ def run(config: SceneConfig, output: str | Path | None = None, on_frame: FrameCa
             "fps": config.output.fps,
             "particle_mass": solver.mass,
             "num_particles": solver.num_particles,
+            "gates": [{"name": g.name, "open_time": g.open_time} for g in scene.gates],
         },
     )
 
