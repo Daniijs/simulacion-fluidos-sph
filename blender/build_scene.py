@@ -190,22 +190,22 @@ def terrain_material():
     ground = nt.nodes.new("ShaderNodeMix")
     ground.data_type = "RGBA"
     L.new(field_mask.outputs[0], ground.inputs["Factor"])
-    L.new(grass.outputs["Color"], ground.inputs[6])
-    L.new(fields.outputs["Color"], ground.inputs[7])
+    L.new(grass.outputs["Color"], socket(ground.inputs, "A", "RGBA"))
+    L.new(fields.outputs["Color"], socket(ground.inputs, "B", "RGBA"))
 
     mix1 = nt.nodes.new("ShaderNodeMix")
     mix1.data_type = "RGBA"
     L.new(low.outputs[0], mix1.inputs["Factor"])
-    L.new(ground.outputs[2], mix1.inputs[6])
-    L.new(earth.outputs["Color"], mix1.inputs[7])
+    L.new(socket(ground.outputs, "Result", "RGBA"), socket(mix1.inputs, "A", "RGBA"))
+    L.new(earth.outputs["Color"], socket(mix1.inputs, "B", "RGBA"))
     mix2 = nt.nodes.new("ShaderNodeMix")
     mix2.data_type = "RGBA"
     L.new(steep_c.outputs[0], mix2.inputs["Factor"])
-    L.new(mix1.outputs[2], mix2.inputs[6])
-    L.new(rock.outputs["Color"], mix2.inputs[7])
+    L.new(socket(mix1.outputs, "Result", "RGBA"), socket(mix2.inputs, "A", "RGBA"))
+    L.new(rock.outputs["Color"], socket(mix2.inputs, "B", "RGBA"))
 
     bsdf = principled(nt, Roughness=0.9)
-    L.new(mix2.outputs[2], bsdf.inputs["Base Color"])
+    L.new(socket(mix2.outputs, "Result", "RGBA"), bsdf.inputs["Base Color"])
     bump = nt.nodes.new("ShaderNodeBump")
     bump.inputs["Strength"].default_value = 0.35
     bump.inputs["Distance"].default_value = 0.002
@@ -381,6 +381,17 @@ def _join_tree(name, crown, trunk, leaves, bark, collection):
     return obj
 
 
+def socket(sockets, name: str, kind: str):
+    """Socket by name and type, ignoring hidden ones (layouts differ between Blender versions)."""
+    for sock in sockets:
+        if sock.name == name and sock.type == kind and sock.enabled:
+            return sock
+    for sock in sockets:
+        if sock.name == name and sock.type == kind:
+            return sock
+    raise KeyError(f"No {kind} socket named {name!r}")
+
+
 def scatter_trees(terrain, prototypes_collection, density: float = 2600.0, seed: int = 4):
     """Geometry-nodes forest on the slopes, kept clear of the reservoir and the flood plain."""
     v = np.empty(len(terrain.data.vertices) * 3)
@@ -406,10 +417,10 @@ def scatter_trees(terrain, prototypes_collection, density: float = 2600.0, seed:
     named.data_type = "FLOAT"
     named.inputs["Name"].default_value = "tree_density"
     dist = N.new("GeometryNodeDistributePointsOnFaces")
-    dist.inputs[4].default_value = density  # Density
-    dist.inputs[6].default_value = seed  # Seed
+    socket(dist.inputs, "Density", "VALUE").default_value = density
+    socket(dist.inputs, "Seed", "INT").default_value = seed
     L.new(gin.outputs[0], dist.inputs["Mesh"])
-    L.new(named.outputs["Attribute"], dist.inputs[5])  # Density Factor
+    L.new(socket(named.outputs, "Attribute", "VALUE"), socket(dist.inputs, "Density Factor", "VALUE"))
     col_info = N.new("GeometryNodeCollectionInfo")
     col_info.inputs["Collection"].default_value = prototypes_collection
     col_info.inputs["Separate Children"].default_value = True
@@ -420,19 +431,19 @@ def scatter_trees(terrain, prototypes_collection, density: float = 2600.0, seed:
     L.new(col_info.outputs[0], inst.inputs["Instance"])
     rand_rot = N.new("FunctionNodeRandomValue")
     rand_rot.data_type = "FLOAT_VECTOR"
-    rand_rot.inputs[1].default_value = (0.08, 0.08, 6.283)  # vector Max
-    L.new(rand_rot.outputs["Value"], inst.inputs["Rotation"])
+    socket(rand_rot.inputs, "Max", "VECTOR").default_value = (0.08, 0.08, 6.283)
+    L.new(socket(rand_rot.outputs, "Value", "VECTOR"), inst.inputs["Rotation"])
     rand_scale = N.new("FunctionNodeRandomValue")
     rand_scale.data_type = "FLOAT"
-    rand_scale.inputs[2].default_value = 0.6
-    rand_scale.inputs[3].default_value = 1.35
-    L.new(rand_scale.outputs[1], inst.inputs["Scale"])
+    socket(rand_scale.inputs, "Min", "VALUE").default_value = 0.6
+    socket(rand_scale.inputs, "Max", "VALUE").default_value = 1.35
+    L.new(socket(rand_scale.outputs, "Value", "VALUE"), inst.inputs["Scale"])
     pick = N.new("FunctionNodeRandomValue")
     pick.data_type = "INT"
-    pick.inputs[4].default_value = 0
-    pick.inputs[5].default_value = 1
-    pick.inputs[8].default_value = 11  # Seed
-    L.new(pick.outputs[2], inst.inputs["Instance Index"])
+    socket(pick.inputs, "Min", "INT").default_value = 0
+    socket(pick.inputs, "Max", "INT").default_value = 1
+    socket(pick.inputs, "Seed", "INT").default_value = 11
+    L.new(socket(pick.outputs, "Value", "INT"), inst.inputs["Instance Index"])
     join = N.new("GeometryNodeJoinGeometry")
     L.new(gin.outputs[0], join.inputs[0])
     L.new(inst.outputs[0], join.inputs[0])
