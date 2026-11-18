@@ -136,7 +136,7 @@ def terrain_material():
 
     grass = ramp(nt, [(0.3, (0.10, 0.20, 0.04)), (0.55, (0.20, 0.33, 0.07)), (0.75, (0.32, 0.38, 0.12))])
     L.new(noise.outputs["Fac"], grass.inputs["Fac"])
-    rock = ramp(nt, [(0.3, (0.13, 0.11, 0.09)), (0.7, (0.27, 0.24, 0.20))])
+    rock = ramp(nt, [(0.3, (0.11, 0.09, 0.07)), (0.7, (0.22, 0.18, 0.14))])
     L.new(fine.outputs["Fac"], rock.inputs["Fac"])
     earth = ramp(nt, [(0.3, (0.16, 0.11, 0.07)), (0.7, (0.28, 0.20, 0.13))])
     L.new(noise.outputs["Fac"], earth.inputs["Fac"])
@@ -257,8 +257,8 @@ def water_material():
     length.operation = "LENGTH"
     L.new(attr.outputs["Vector"], length.inputs[0])
     foam = nt.nodes.new("ShaderNodeMapRange")
-    foam.inputs["From Min"].default_value = 1.6
-    foam.inputs["From Max"].default_value = 3.4
+    foam.inputs["From Min"].default_value = 2.6
+    foam.inputs["From Max"].default_value = 4.2
     L.new(length.outputs["Value"], foam.inputs["Value"])
     noise = nt.nodes.new("ShaderNodeTexNoise")
     noise.inputs["Scale"].default_value = 140.0
@@ -438,12 +438,11 @@ def scatter_trees(terrain, prototypes_collection, density: float = 2600.0, seed:
     socket(rand_scale.inputs, "Min", "VALUE").default_value = 0.6
     socket(rand_scale.inputs, "Max", "VALUE").default_value = 1.35
     L.new(socket(rand_scale.outputs, "Value", "VALUE"), inst.inputs["Scale"])
-    pick = N.new("FunctionNodeRandomValue")
-    pick.data_type = "INT"
-    socket(pick.inputs, "Min", "INT").default_value = 0
-    socket(pick.inputs, "Max", "INT").default_value = 1
+    pick = N.new("FunctionNodeRandomValue")  # 30 % broadleaf, 70 % conifers
+    pick.data_type = "BOOLEAN"
+    socket(pick.inputs, "Probability", "VALUE").default_value = 0.3
     socket(pick.inputs, "Seed", "INT").default_value = 11
-    L.new(socket(pick.outputs, "Value", "INT"), inst.inputs["Instance Index"])
+    L.new(socket(pick.outputs, "Value", "BOOLEAN"), inst.inputs["Instance Index"])
     join = N.new("GeometryNodeJoinGeometry")
     L.new(gin.outputs[0], join.inputs[0])
     L.new(inst.outputs[0], join.inputs[0])

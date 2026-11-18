@@ -17,28 +17,44 @@ from pathlib import Path
 
 import numpy as np
 import pysplashsurf
+from scipy.spatial import cKDTree
 
 from .io import load_metadata, read_frame
 
 log = logging.getLogger(__name__)
 
-SPRAY_DENSITY = 0.35  # relative to the median density: isolated droplets
+SPRAY_DENSITY = 0.25  # fraction of a full neighbourhood below which a particle is a droplet
 SPRAY_SPEED = 0.8  # m/s
 
 
 def reconstruct(
-    positions: np.ndarray, velocities: np.ndarray, spacing: float, resolution: float = 0.5
+    positions: np.ndarray,
+    velocities: np.ndarray,
+    spacing: float,
+    resolution: float = 0.5,
+    smoothing: float = 3.0,
+    threshold: float = 0.55,
 ) -> dict[str, np.ndarray]:
-    """Triangle mesh of the free surface for one frame."""
+    """Triangle mesh of the free surface for one frame, plus the spray droplets.
+
+    Isolated particles are left out of the mesh (each one would become a small
+    bead) and returned as spray instead. ``smoothing`` and ``resolution`` are in
+    particle radii: a support a little wider than the solver's keeps thin, fast
+    sheets of water connected.
+    """
     radius = 0.5 * spacing
-    mesh_with_data, reconstruction = pysplashsurf.reconstruction_pipeline(
-        positions.astype(np.float32),
-        attributes_to_interpolate={"velocity": velocities.astype(np.float32)},
+    density = _relative_density(positions, spacing)
+    speed = np.linalg.norm(velocities, axis=1)
+    isolated = density < SPRAY_DENSITY
+    bulk = ~isolated
+    mesh_with_data, _ = pysplashsurf.reconstruction_pipeline(
+        positions[bulk].astype(np.float32),
+        attributes_to_interpolate={"velocity": velocities[bulk].astype(np.float32)},
         particle_radius=radius,
-        smoothing_length=2.0,
+        smoothing_length=smoothing,
         cube_size=resolution,
-        iso_surface_threshold=0.6,
-        mesh_smoothing_iters=15,
+        iso_surface_threshold=threshold,
+        mesh_smoothing_iters=25,
         mesh_smoothing_weights=True,
         compute_normals=True,
         sph_normals=False,
@@ -48,9 +64,7 @@ def reconstruct(
     )
     mesh = mesh_with_data.mesh
     attrs = mesh_with_data.point_attributes
-    density = np.asarray(reconstruction.particle_densities)
-    speed = np.linalg.norm(velocities, axis=1)
-    spray = (density < SPRAY_DENSITY * np.median(density)) & (speed > SPRAY_SPEED)
+    spray = isolated & (speed > SPRAY_SPEED)
     return {
         "spray_position": positions[spray].astype(np.float32),
         "spray_velocity": velocities[spray].astype(np.float16),
@@ -61,9 +75,17 @@ def reconstruct(
     }
 
 
+def _relative_density(positions: np.ndarray, spacing: float) -> np.ndarray:
+    """Neighbour count within the solver's support radius, relative to a full neighbourhood."""
+    tree = cKDTree(positions)
+    counts = tree.query_ball_point(positions, r=2.0 * spacing, return_length=True, workers=-1)
+    full = 4.0 / 3.0 * np.pi * 2.0**3  # lattice sites inside the support sphere
+    return counts / full
+
+
 def reconstruct_directory(
     directory: str | Path,
-    resolution: float = 0.5,
+    resolution: float = 0.6,
     start: int = 0,
     end: int | None = None,
     on_frame: Callable[[int], None] | None = None,
