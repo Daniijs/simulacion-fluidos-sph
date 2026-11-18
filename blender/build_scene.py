@@ -294,10 +294,10 @@ def water_material():
     L.new(transparent.outputs[0], shadow_mix.inputs[2])
     L.new(shadow_mix.outputs[0], out.inputs["Surface"])
 
-    volume = nt.nodes.new("ShaderNodeVolumePrincipled")
-    volume.inputs["Color"].default_value = (0.62, 0.66, 0.52, 1)  # silt-laden water
-    volume.inputs["Density"].default_value = 1.0
-    volume.inputs["Absorption Color"].default_value = (0.62, 0.82, 0.76, 1)
+    # Pure absorption (Beer-Lambert): at this scale scattering is invisible and costly.
+    volume = nt.nodes.new("ShaderNodeVolumeAbsorption")
+    volume.inputs["Color"].default_value = (0.55, 0.74, 0.66, 1)
+    volume.inputs["Density"].default_value = 6.0
     L.new(volume.outputs[0], out.inputs["Volume"])
     return mat
 
@@ -649,18 +649,21 @@ def build(sim_dir: Path, preview: bool = False) -> None:
     scene.frame_start, scene.frame_end = 1, frames
     scene.render.fps = 30
     scene.render.engine = "CYCLES"
-    scene.cycles.samples = 64 if preview else 256
-    scene.cycles.adaptive_threshold = 0.015
+    scene.cycles.samples = 64 if preview else 128
+    scene.cycles.adaptive_threshold = 0.03
     scene.cycles.use_denoising = True
     scene.cycles.denoiser = "OPENIMAGEDENOISE"
-    scene.cycles.max_bounces = 12
-    scene.cycles.transmission_bounces = 12
-    scene.cycles.volume_bounces = 2
+    scene.cycles.max_bounces = 8
+    scene.cycles.diffuse_bounces = 2
+    scene.cycles.glossy_bounces = 3
+    scene.cycles.transmission_bounces = 8
+    scene.cycles.transparent_max_bounces = 8
+    scene.cycles.volume_bounces = 0
     scene.cycles.caustics_reflective = False
     scene.cycles.caustics_refractive = False
-    scene.render.use_motion_blur = True
+    scene.render.use_motion_blur = False  # miniature look: crisp, fast shutter
     scene.render.motion_blur_shutter = 0.5
-    scene.render.resolution_x, scene.render.resolution_y = (960, 540) if preview else (3840, 2160)
+    scene.render.resolution_x, scene.render.resolution_y = (960, 540) if preview else (2560, 1440)
     scene.render.image_settings.file_format = "PNG"
     scene.render.image_settings.color_depth = "16"
     scene.render.filepath = "//render/frame_"
