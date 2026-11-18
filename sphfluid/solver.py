@@ -61,6 +61,7 @@ class PBFSolver:
         self.lower = ti.Vector([float(c) + 0.5 * dx for c in scene.domain_lower])
         self.upper = ti.Vector([float(c) - 0.5 * dx for c in scene.domain_upper])
         self.sink_height = float(max(scene.sink_height, -1e30))
+        self.max_correction = params.max_correction * dx
         self.boundary_scale = boundary_volume_scale(dx, h, dx * BOUNDARY_SPACING_RATIO, params.boundary_layers)
 
         # --- fluid state ---
@@ -393,13 +394,23 @@ class PBFSolver:
 
     @ti.kernel
     def _apply_delta(self, n: ti.i32):
+        # Where the density gradient nearly cancels (e.g. a particle squeezed between
+        # two boundary layers) the correction can blow up; cap it to keep the solve stable.
         for i in range(n):
-            self.x[i] = self._confine(self.x[i] + self.delta[i])
+            d = self.delta[i]
+            length = d.norm()
+            if length > self.max_correction:
+                d *= self.max_correction / length
+            self.x[i] = self._confine(self.x[i] + d)
 
     @ti.kernel
     def _update_velocity(self, dt: ti.f32, n: ti.i32):
         for i in range(n):
-            self.v[i] = (self.x[i] - self.x_old[i]) / dt
+            v = (self.x[i] - self.x_old[i]) / dt
+            speed = v.norm()
+            if speed > self.params.max_speed:
+                v *= self.params.max_speed / speed
+            self.v[i] = v
 
     @ti.kernel
     def _xsph(self, n: ti.i32):

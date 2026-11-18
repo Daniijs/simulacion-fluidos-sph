@@ -2,6 +2,10 @@
 
 Experimental data: Phil. Trans. R. Soc. A 244, Table 2 (n² = 2), first record.
 Z = z / a is the surge front position and T = n t sqrt(g / a) the scaled time.
+
+The paper normalises its time axis at Z = 1.44 (the instant of release could
+not be measured precisely), so the simulated curve is shifted in time to pass
+through that same point before comparing.
 """
 
 from __future__ import annotations
@@ -34,7 +38,13 @@ def surge_front(directory: Path, column_width: float, height_ratio: float) -> tu
     return n * np.array(times) * np.sqrt(GRAVITY / column_width), np.array(fronts) / column_width
 
 
+def align(T: np.ndarray, Z: np.ndarray) -> np.ndarray:
+    """Shift simulated time so that Z = 1.44 happens at T = 1.19, as in the paper."""
+    return T + (EXPERIMENT_T[0] - np.interp(EXPERIMENT_Z[0], Z, T))
+
+
 def compare(T: np.ndarray, Z: np.ndarray) -> dict:
+    T = align(T, Z)
     simulated = np.interp(EXPERIMENT_T, T, Z)
     error = simulated - EXPERIMENT_Z
     return {
@@ -44,19 +54,22 @@ def compare(T: np.ndarray, Z: np.ndarray) -> dict:
     }
 
 
-def plot(T: np.ndarray, Z: np.ndarray, path: Path) -> None:
+def plot(runs: list[tuple[str, np.ndarray, np.ndarray]], path: Path) -> None:
     import matplotlib
 
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
     fig, ax = plt.subplots(figsize=(7, 4.5), dpi=150)
-    ax.plot(T, Z, color="#1f77b4", lw=2.2, label="sphfluid (PBF)")
+    colors = ["#1f77b4", "#2ec4b6", "#6a4c93"]
+    for (label, T, Z), color in zip(runs, colors, strict=False):
+        T = align(T, Z)
+        ax.plot(T, Z, color=color, lw=2.2, label=label)
     ax.scatter(EXPERIMENT_T, EXPERIMENT_Z, color="#d62728", zorder=3, s=28, label="Martin & Moyce (1952)")
     ax.set_xlabel(r"$T = n\,t\,\sqrt{g/a}$")
     ax.set_ylabel(r"$Z = z/a$")
-    ax.set_xlim(0, max(T.max(), EXPERIMENT_T.max()) * 1.02)
-    ax.set_ylim(1, None)
+    ax.set_xlim(0, 5.5)
+    ax.set_ylim(1, 8)
     ax.grid(alpha=0.3)
     ax.legend(frameon=False)
     ax.set_title("Dam break: posición del frente de la ola")
@@ -66,15 +79,20 @@ def plot(T: np.ndarray, Z: np.ndarray, path: Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("directory", type=Path)
+    parser.add_argument("directories", type=Path, nargs="+")
     parser.add_argument("--column-width", type=float, default=0.1)
     parser.add_argument("--height-ratio", type=float, default=2.0)
     parser.add_argument("--plot", type=Path)
     args = parser.parse_args()
-    T, Z = surge_front(args.directory, args.column_width, args.height_ratio)
-    print(json.dumps(compare(T, Z), indent=2))
+    runs = []
+    for directory in args.directories:
+        T, Z = surge_front(directory, args.column_width, args.height_ratio)
+        spacing = load_metadata(directory)["fluid"]["particle_spacing"]
+        label = f"sphfluid, dx = {spacing * 1000:g} mm"
+        runs.append((label, T, Z))
+        print(label, json.dumps(compare(T, Z)))
     if args.plot:
-        plot(T, Z, args.plot)
+        plot(runs, args.plot)
 
 
 if __name__ == "__main__":
