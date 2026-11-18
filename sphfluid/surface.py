@@ -23,8 +23,9 @@ from .io import load_metadata, read_frame
 
 log = logging.getLogger(__name__)
 
-SPRAY_DENSITY = 0.25  # fraction of a full neighbourhood below which a particle is a droplet
-SPRAY_SPEED = 0.8  # m/s
+SPRAY_DENSITY = 0.25  # fraction of a full neighbourhood below which a particle leaves the mesh
+SPRAY_SPEED = 1.5  # m/s; slower isolated particles are dropped, not drawn
+SPRAY_MAX_DENSITY = 0.12  # only truly airborne droplets are drawn
 
 
 def reconstruct(
@@ -64,7 +65,7 @@ def reconstruct(
     )
     mesh = mesh_with_data.mesh
     attrs = mesh_with_data.point_attributes
-    spray = isolated & (speed > SPRAY_SPEED)
+    spray = (density < SPRAY_MAX_DENSITY) & (speed > SPRAY_SPEED)
     return {
         "spray_position": positions[spray].astype(np.float32),
         "spray_velocity": velocities[spray].astype(np.float16),
@@ -85,7 +86,7 @@ def _relative_density(positions: np.ndarray, spacing: float) -> np.ndarray:
 
 def reconstruct_directory(
     directory: str | Path,
-    resolution: float = 0.6,
+    resolution: float = 0.75,
     start: int = 0,
     end: int | None = None,
     on_frame: Callable[[int], None] | None = None,

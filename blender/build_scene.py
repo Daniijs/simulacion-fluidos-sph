@@ -554,9 +554,9 @@ def animate_camera(cam, target, focus, fronts: list[dict], dam_x: float = 1.0, f
 def spray_object(collection):
     """Droplets: one vertex per spray particle, drawn as small white spheres."""
     mat, nt, out = node_material("Spray")
-    bsdf = principled(nt, Roughness=0.35)
-    bsdf.inputs["Base Color"].default_value = (0.92, 0.95, 0.97, 1)
-    bsdf.inputs["Subsurface Weight"].default_value = 0.5
+    bsdf = principled(nt, Roughness=0.08, IOR=1.333)
+    bsdf.inputs["Base Color"].default_value = (0.9, 0.95, 0.97, 1)
+    bsdf.inputs["Transmission Weight"].default_value = 0.85
     nt.links.new(bsdf.outputs[0], out.inputs["Surface"])
 
     obj = bpy.data.objects.new("Spray", bpy.data.meshes.new("Spray"))
@@ -566,7 +566,7 @@ def spray_object(collection):
     tree.interface.new_socket("Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
     gin, gout = tree.nodes.new("NodeGroupInput"), tree.nodes.new("NodeGroupOutput")
     to_points = tree.nodes.new("GeometryNodeMeshToPoints")
-    to_points.inputs["Radius"].default_value = 0.0011
+    to_points.inputs["Radius"].default_value = 0.0009
     set_mat = tree.nodes.new("GeometryNodeSetMaterial")
     set_mat.inputs["Material"].default_value = mat
     tree.links.new(gin.outputs[0], to_points.inputs["Mesh"])
