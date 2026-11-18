@@ -1,9 +1,9 @@
-# Final render scene: ~1.3 million particles. Needs a GPU (sphfluid run --arch gpu).
+# Final render scene: ~2.25 million particles. Needs a GPU (sphfluid run --arch gpu).
 name = "Valle en miniatura"
 builder = "valley"
 
 [fluid]
-particle_spacing = 0.006
+particle_spacing = 0.005
 
 [solver]
 iterations = 4
