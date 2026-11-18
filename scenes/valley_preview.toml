@@ -1,0 +1,18 @@
+# Low-resolution version of the valley scene for quick checks on a CPU.
+name = "Valle en miniatura (preview)"
+builder = "valley"
+
+[fluid]
+particle_spacing = 0.016
+
+[solver]
+iterations = 3
+
+[output]
+fps = 30
+duration = 1.5
+directory = "output/valley_preview"
+
+[scene]
+seed = 3
+breach_time = 0.2
